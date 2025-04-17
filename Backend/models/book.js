@@ -1,6 +1,10 @@
 const mongoose = require('mongoose')
 
 const bookSchema =  mongoose.Schema({
+    url: {
+        type: String,
+        required: true
+    },
     title: {
         type: String,
         required: true
@@ -30,7 +34,8 @@ const bookSchema =  mongoose.Schema({
     rating: {
         type: Number,
         default: 0
-    }
+    },
+    featured: { type: Boolean, default: false }
 },  
     { timestamps: true }
 )

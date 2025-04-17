@@ -4,30 +4,28 @@ const router = express.Router()
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')
 const verifyToken = require('../middlewares/verifyToken')
-const userSchema = require('../middlewares/userSchema')
+const {signinSchema, signupSchema} = require('../middlewares/userSchema')
 
 // Sign Up
 router.post('/sign-up', async (req, res) => {
     try {
-        const { error, value } = userSchema.validate(req.body)
+        const { error, value } = signupSchema.validate(req.body)
         if(error) {
             return res.status(400).json({
                 success: false,
                 message: error.message
             })
         }
-        const { username, email, password } = value
-        const existingUsername = await User.findOne({username})
-        if(existingUsername) {
-            return res.status(400).json({ message: "username already exists"})
-        }
+        const { email, password } = value
         const existingEmail = await User.findOne({email})
         if(existingEmail) {
-            return res.status(400).json({ message: "email already exists"})
+            return res.status(400).json({
+                success: false,
+                message: "email already exists"})
         }
-        
-        const hashPass = await bcrypt.hash(password, 10)
-        const newUser = await User.create(value)
+        const salt = await bcrypt.genSalt(10)
+        const hashPass = await bcrypt.hash(password, salt)
+        const newUser = await User.create({...value, password: hashPass })
         const token = jwt.sign({id: newUser._id, role: newUser.role}, process.env.JWT_SECRET_TOKEN, { expiresIn: '7d'})
         res.cookie('token', token, {
             httpOnly: true,
@@ -37,7 +35,9 @@ router.post('/sign-up', async (req, res) => {
         })
         return res.status(200).json({ 
             success: true,
-            message: "Sign up successfull"
+            message: "Sign up successfull",
+            role: newUser.role,
+            email: newUser.email
         })
     } catch (error) {
         res.status(500).json({ 
@@ -51,24 +51,20 @@ router.post('/sign-up', async (req, res) => {
 
 router.post('/sign-in', async (req, res) => {
     try {
-        const { username, password} = req.body
-        const existingUser = await User.findOne({ username })
-        if(!existingUser) {
-            return res.status(400).json({ message: "Invalid credentials"})
+        const { error, value } = signinSchema.validate(req.body)
+        if(error) {
+            return res.status(400).json({
+                success: false,
+                message: error.message
+            })
         }
-        // await bcrypt.compare(password, existingUser.password, (err, data) => {
-        //     if(data) {
-        //         const authClaims = [
-        //             {
-        //                 name: existingUser.username
-        //             },
-        //             {
-        //                 role: existingUser.role
-        //             }
-        //         ]
-        //         const token = jwt.sign({ authClaims }, "bookStore123", { 
-        //             expiresIn: "30d"
-        //         })
+        const { email, password } = value
+        const existingUser = await User.findOne({ email })
+        if(!existingUser) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid credentials"})
+        }
         const result = await bcrypt.compare(password, existingUser.password)
         if(!result) {
             return res.status(400).json({
@@ -85,7 +81,9 @@ router.post('/sign-in', async (req, res) => {
         })
         return res.status(200).json({
             success: true,
-            message: 'login successful'
+            message: 'login successful',
+            role: existingUser.role,
+            email: existingUser.email
         })
     } catch (error) {
         res.status(500).json({ message: error.message })
@@ -94,26 +92,64 @@ router.post('/sign-in', async (req, res) => {
 
 // Get User Info
 
-router.get('/get-user-info', verifyToken, async (req, res) => {
+router.get('/user', verifyToken, async (req, res) => {
     try {
-        const { id } = req.headers
+        const { id } = req.user
         const data = await User.findById(id).select("-password")
-        return res.status(200).json({ data })
+        return res.status(200).json({ 
+            success: true,
+            data
+         })
     } catch (error) {
-        res.status(500).json({ message: error.message })
+        res.status(500).json({ 
+            success: false,
+            message: 'failed to fetch user details'
+         })
     }
 })
 
-// Update address
-router.put('/update-address', verifyToken, async (req, res) => {
+// Update user
+router.put('/user', verifyToken, async (req, res) => {
     try {
-        const { id } = req.headers
-        const { address } = req.body
-        await User.findByIdAndUpdate(id, {address: address})
-        return res.status(200).json({ message: "Address updated" })
+        const { id } = req.user
+        const { email, oldPassword } = req.body
+
+        const user = await User.findById(id)
+        if (!user) {
+            return res.status(404).json({ 
+                success: false,
+                message: "User not found" 
+            })
+        }
+
+        const isPasswordValid = await bcrypt.compare(oldPassword, user.password)
+        if (!isPasswordValid) {
+            return res.status(401).json({ 
+                success: false,
+                message: "Invalid password" 
+            })
+        }
+
+        const emailAlreadyExists = await User.findOne({email})
+        if(emailAlreadyExists) {
+            return res.status(400).json({ 
+                success: false,
+                message: "Email already taken" 
+            });
+        } 
+        user.email = email; 
+        await user.save();
+ 
+        return res.status(200).json({
+            success: true,
+            message: "Email updated successfully" ,
+            email: user.email
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message })
+        res.status(500).json({ 
+            success: false,
+            message: `User update failed` });
     }
-})
+});
 
 module.exports = router
