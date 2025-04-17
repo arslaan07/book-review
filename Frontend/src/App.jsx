@@ -16,7 +16,6 @@ import { ToastContainer } from 'react-toastify';
 
 
 const App = () => {
-  // const dispatch = useDispatch()
   const {isAuthenticated, role} = useSelector((state) => state.auth)
   console.log(role)
   return (

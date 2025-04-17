@@ -2,41 +2,41 @@ import React, { useEffect, useState } from "react";
 import BookCard from "../BookCard/BookCard";
 import Loader from "./Loader/Loader";
 import api from "../../api";
-import AddBook from "../../pages/AddBook";
 
-const FeaturedBooks = () => {
-  const [data, setData] = useState([]); // Initialize as an empty array
-  const [loading, setLoading] = useState(true); // Optional for better clarity
-  const [error, setError] = useState(null); // Optional for error handling
+const FeaturedBooks = ({ shouldRefetch }) => {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
+    let isMounted = true; // To prevent state updates after unmount
+
     const fetchBooks = async () => {
       try {
+        setLoading(true);
+        setError(null);
         const response = await api.get(`api/v1/featured-books`);
-        setData(response.data.data);
+        if (isMounted) {
+          setData(response.data.data || []);
+        }
       } catch (err) {
-        setError(err.message || "Failed to fetch books");
-        console.error(err);
+        if (isMounted) {
+          setError(err.message || "Failed to fetch books");
+          console.error(err);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
+
     fetchBooks();
-  }, []);
-  useEffect(() => {
-    const fetchBooks = async () => {
-      try {
-        const response = await api.get(`api/v1/featured-books`);
-        setData(response.data.data);
-      } catch (err) {
-        setError(err.message || "Failed to fetch books");
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+
+    return () => {
+      isMounted = false; // Cleanup function
     };
-    fetchBooks();
-  }, [AddBook]);
+  }, [shouldRefetch]); // Add proper dependency here
 
   if (loading) {
     return (
